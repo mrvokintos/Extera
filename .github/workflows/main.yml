@@ -1,0 +1,112 @@
+name: Build Windows
+on:
+  workflow_dispatch:
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Extera
+        uses: actions/checkout@v4
+        with:
+          path: Extera
+
+      - name: Checkout matrix-dart-sdk
+        uses: actions/checkout@v4
+        with:
+          repository: ExteraApp/matrix-dart-sdk
+          ref: main
+          path: matrix-dart-sdk
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install CMake, NASM, OpenSSL via Chocolatey
+        run: |
+          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+          choco install nasm -y
+          choco install openssl -y
+        shell: pwsh
+
+      - name: Add tools to PATH
+        run: echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
+        shell: pwsh
+
+      - name: Run Windows build script
+        working-directory: Extera
+        run: .\scripts\build-windows.ps1
+        shell: pwsh
+
+      - name: Verify build output exists
+        working-directory: Extera
+        shell: pwsh
+        run: |
+          $exe = "build\windows\x64\runner\Release\extera.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Build failed: $exe not found"
+          }
+          Write-Host "Found: $exe"
+
+      - name: Generate Inno Setup script
+        working-directory: Extera
+        shell: pwsh
+        run: |
+          @'
+          #define MyAppName "Extera"
+          #define MyAppExe "extera.exe"
+          #define MyAppVersion "1.0.0"
+          #define MyAppPublisher "Extera"
+
+          [Setup]
+          AppId={{B6A6E5C0-EXTR-4A11-9C3E-000000000001}
+          AppName={#MyAppName}
+          AppVersion={#MyAppVersion}
+          AppPublisher={#MyAppPublisher}
+          DefaultDirName={autopf}\{#MyAppName}
+          DefaultGroupName={#MyAppName}
+          OutputDir=Output
+          OutputBaseFilename=Extera-Setup-{#MyAppVersion}
+          Compression=lzma2/max
+          SolidCompression=yes
+          ArchitecturesAllowed=x64compatible
+          ArchitecturesInstallIn64BitMode=x64compatible
+          UninstallDisplayIcon={app}\{#MyAppExe}
+
+          [Files]
+          Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"
+          Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon
+
+          [Tasks]
+          Name: "desktopicon"; Description: "Создать значок на рабочем столе"; GroupDescription: "Дополнительно"
+
+          [Run]
+          Filename: "{app}\{#MyAppExe}"; Description: "Запустить {#MyAppName}"; Flags: nowait postinstall skipifsilent
+          '@ | Out-File -FilePath extera.iss -Encoding utf8
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+        shell: pwsh
+
+      - name: Build installer
+        working-directory: Extera
+        run: iscc extera.iss
+        shell: pwsh
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: extera-windows-setup
+          path: Extera/Output/*.exe
+
+      - name: Upload raw build (fallback)
+        uses: actions/upload-artifact@v4
+        with:
+          name: extera-windows-raw
+          path: Extera/build/windows/x64/runner/Release/**
