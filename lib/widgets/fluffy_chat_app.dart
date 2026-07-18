@@ -51,7 +51,7 @@ class FluffyChatApp extends StatefulWidget {
 
 class _FluffyChatAppState extends State<FluffyChatApp> {
   final _androidSystemFontPlugin = AndroidSystemFont();
-  static const _platform = MethodChannel('com.extera.app/window');
+  static const _platform = MethodChannel('xyz.extera.extera/window');
 
   // Keeps track of the last Brightness applied to the native window frame
   // (title bar) so we don't spam the platform channel with redundant calls
@@ -154,7 +154,9 @@ class _FluffyChatAppState extends State<FluffyChatApp> {
               routerConfig: FluffyChatApp.router,
               builder: (context, child) => AppLockWidget(
                 pincode: widget.pincode,
-                clients: widget.clients,
+                clients: widget.clients,	
+              // Need a navigator above the Matrix widget for
+              // displaying dialogs
                 child: DownloadManager(
                   child: BackgroundAudioPlayer(
                     child: Matrix(
